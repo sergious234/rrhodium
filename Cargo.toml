@@ -2,6 +2,11 @@
 name = "rrhodium"
 version = "0.1.0"
 edition = "2024"
+authors = ["sergious234 <sergious23@gmail.com>"]
+description = "Lib for building modrinth API getters urls"
+license = "GPL-2.0"
+keywords = ["minecraft", "modrinth"]
+repository = "https://github.com/sergious234/rrhodium"
 
 [dependencies]
 itertools = "0.14.0"
