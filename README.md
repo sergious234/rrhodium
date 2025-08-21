@@ -1,5 +1,7 @@
 # Rrhodium
 
+<img src="./RrhodiumLogo.png" width=200>
+
 [![Crates.io](https://img.shields.io/crates/v/rrhodium)](https://crates.io/crates/rrhodium)
 [![License](https://img.shields.io/crates/l/rrhodium)](LICENSE)
 [![Documentation](https://img.shields.io/docsrs/rrhodium)](https://docs.rs/rrhodium)
