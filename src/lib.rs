@@ -28,11 +28,10 @@
 //! use rrhodium::*;
 //! fn foo() -> FacetsConjunction {
 //! FacetsConjunction::new()
-//!     .and(FacetsDisjunction::new().or(Facets::Categories("Technology".to_string())))
-//!     .and(FacetsDisjunction::new().or(Facets::Categories("Magic".to_string())))
+//!     .and(FacetsDisjunction::new_with(Facets::Categories("Technology".to_string())))
+//!     .and(FacetsDisjunction::new_with(Facets::Categories("Magic".to_string())))
 //!     .and(
-//!         FacetsDisjunction::new()
-//!             .or(Facets::Version("1.19".to_string()))
+//!         FacetsDisjunction::new_with(Facets::Version("1.19".to_string()))
 //!             .or(Facets::Version("1.19.1".to_string())),
 //!     )
 //! }
@@ -51,10 +50,7 @@
 //! (create/delete/modify project)
 
 use itertools::Itertools;
-use std::{
-    fmt::{Display, Formatter, Write},
-    vec::IntoIter,
-};
+use std::fmt::{Display, Formatter, Write};
 
 /// A type for representing that no search type is set.
 type NoSearchType = ();
@@ -186,6 +182,12 @@ pub enum SearchType {
 
     /// /tag/loader
     Loaders,
+
+    /// /tag/game_version
+    GameVersions,
+
+    /// /tag/project_type
+    ProjectTypes,
 }
 
 impl Display for SearchType {
@@ -220,6 +222,8 @@ impl Display for SearchType {
             SearchType::Loaders => write!(f, "tag/loader"),
             SearchType::VersionFileUpdate { hash, .. } => write!(f, "version_file/{hash}/update"),
             SearchType::VersionFilesUpdate => write!(f, "/version_files/update"),
+            SearchType::GameVersions => write!(f, "/tag/game_version"),
+            SearchType::ProjectTypes => write!(f, "/tag/project_type"),
         }
     }
 }
@@ -463,7 +467,7 @@ impl<T> SearchBuilder<T> {
     where
         E: ToString,
     {
-        self.game_versions = versions.into_iter().map(|x| x.to_string()).collect_vec();
+        self.game_versions = versions.into_iter().map(|x| x.to_string()).collect();
         self
     }
 
@@ -570,11 +574,11 @@ impl SearchBuilder<SearchType> {
         };
 
         match &self.search_type {
-            // If SearchType is Categories or Loaders there is no need to apply
-            // queries/facets...
-            SearchType::Categories | SearchType::Loaders => {
-                return url;
-            }
+            SearchType::Categories
+            | SearchType::Loaders
+            | SearchType::GameVersions
+            | SearchType::ProjectTypes => {}
+
             SearchType::Search {
                 query,
                 limit,
@@ -646,18 +650,43 @@ impl SearchBuilder<SearchType> {
 /// ```rust
 /// use rrhodium::{FacetsConjunction, FacetsDisjunction, Facets};
 ///
-/// let version_filter = FacetsDisjunction::new()
-///     .or(Facets::Version("1.19".to_string()))
+/// let version_filter = FacetsDisjunction::new_with(Facets::Version("1.19".to_string()))
 ///     .or(Facets::Version("1.19.1".to_string()))
 ///     .or(Facets::Version("1.19.2".to_string()));
 ///
-/// let category_filter = FacetsDisjunction::new()
-///     .or(Facets::Categories("technology".to_string()))
+/// let category_filter = FacetsDisjunction::new_with(Facets::Categories("technology".to_string()))
 ///     .or(Facets::Categories("magic".to_string()));
 ///
 /// let search_filter = FacetsConjunction::new()
 ///     .and(version_filter)
 ///     .and(category_filter);
+/// ```
+///
+/// # Into friendly
+///
+/// You can create a `FacetsConjunction` from various sources:
+///
+/// ```rust
+/// use rrhodium::*;
+///
+/// let disjunctions = vec![
+///     FacetsDisjunction::new().or(Facets::Version("1.19".to_string())),
+///     FacetsDisjunction::new_with(Facets::Categories("Technology".to_string())),
+/// ];
+///
+/// let conjunction: FacetsConjunction = disjunctions.into();
+/// ```
+///
+/// # Iterator friendly
+///
+/// ```rust
+/// use rrhodium::*;
+///
+/// let categories = vec!["Technology", "Magic", "Adventure"];
+///
+/// let x: FacetsConjunction = categories.iter()
+///     .map(|c| FacetsDisjunction::new_with(Facets::Categories(c.to_string())))
+///     .collect();
 /// ```
 ///
 /// # Search Logic
@@ -675,9 +704,12 @@ pub struct FacetsConjunction {
 impl FacetsConjunction {
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            disjunctions: vec![],
-        }
+        Self::default()
+    }
+
+    #[must_use]
+    pub fn new_with(dist: FacetsDisjunction) -> Self {
+        Self::default().and(dist)
     }
 
     // Adds a disjunction to this conjunction using a builder pattern.
@@ -690,11 +722,9 @@ impl FacetsConjunction {
     ///
     /// ```rust
     /// # use rrhodium::{FacetsConjunction, FacetsDisjunction, Facets};
-    /// let version_filter = FacetsDisjunction::new()
-    ///     .or(Facets::Version("1.19".to_string()));
+    /// let version_filter = FacetsDisjunction::new_with(Facets::Version("1.19".to_string()));
     ///
-    /// let category_filter = FacetsDisjunction::new()
-    ///     .or(Facets::Categories("technology".to_string()));
+    /// let category_filter = FacetsDisjunction::new_with(Facets::Categories("technology".to_string()));
     ///
     /// let conjunction = FacetsConjunction::new()
     ///     .and(version_filter)
@@ -726,8 +756,7 @@ impl FacetsConjunction {
     /// let empty = FacetsConjunction::new();
     /// assert!(empty.is_empty());
     ///
-    /// let non_empty = FacetsConjunction::new()
-    ///     .and(FacetsDisjunction::new().or(Facets::Version("1.19".to_string())));
+    /// let non_empty = FacetsConjunction::new().and(FacetsDisjunction::new_with(Facets::Version("1.19".to_string())));
     /// assert!(!non_empty.is_empty());
     /// ```
     #[must_use]
@@ -742,8 +771,8 @@ impl FacetsConjunction {
     /// ```rust
     /// # use rrhodium::{FacetsConjunction, FacetsDisjunction, Facets};
     /// let conjunction = FacetsConjunction::new()
-    ///     .and(FacetsDisjunction::new().or(Facets::Version("1.19".to_string())))
-    ///     .and(FacetsDisjunction::new().or(Facets::Categories("tech".to_string())));
+    ///     .and(FacetsDisjunction::new_with(Facets::Version("1.19".to_string())))
+    ///     .and(FacetsDisjunction::new_with(Facets::Categories("tech".to_string())));
     ///
     /// for disjunction in conjunction.iter() {
     ///     println!("Disjunction with {} facets", disjunction);
@@ -764,7 +793,7 @@ impl<'a> IntoIterator for &'a FacetsConjunction {
 
 impl IntoIterator for FacetsConjunction {
     type Item = FacetsDisjunction;
-    type IntoIter = IntoIter<FacetsDisjunction>;
+    type IntoIter = std::vec::IntoIter<FacetsDisjunction>;
     fn into_iter(self) -> Self::IntoIter {
         self.disjunctions.into_iter()
     }
@@ -778,7 +807,15 @@ impl std::convert::From<Vec<FacetsDisjunction>> for FacetsConjunction {
     }
 }
 
-///// A collection of facets that represents a logical OR operation (disjunction).
+impl std::iter::FromIterator<FacetsDisjunction> for FacetsConjunction {
+    fn from_iter<T: IntoIterator<Item = FacetsDisjunction>>(iter: T) -> Self {
+        Self {
+            disjunctions: iter.into_iter().collect(),
+        }
+    }
+}
+
+/// A collection of facets that represents a logical OR operation (disjunction).
 ///
 /// This struct is used to group multiple [`Facets`] together where any one of them
 /// can match the search criteria. When used in a search query, at least one of
@@ -790,6 +827,36 @@ impl std::convert::From<Vec<FacetsDisjunction>> for FacetsConjunction {
 /// - **1.19.0 OR 1.19.1**: Returns projects compatible with either version
 /// - **Technology OR Adventure**: Returns projects in either category
 /// - **Forge OR Fabric**: Returns projects supporting either mod loader
+///
+/// # Into friendly
+///
+/// You can create a `FacetsDisjunction` from a vector of `Facets`, no extra allocations! :
+/// ```rust
+/// # use rrhodium::{FacetsDisjunction, Facets};
+/// # fn bar() {
+/// let facets = vec![
+///     Facets::Version("1.19".to_string()),
+///     Facets::Version("1.19.1".to_string()),
+///     Facets::Categories("Technology".to_string()),
+/// ];
+///
+/// let disjunction: FacetsDisjunction = facets.into();
+/// # }
+/// ```
+///
+/// # Iterator friendly
+///
+/// ```rust
+/// # use rrhodium::{FacetsDisjunction, Facets};
+/// # fn foo() {
+/// // Create facets from a range of versions
+/// let version_facets = (0..3)
+///     .map(|i| Facets::Version(format!("1.19.{}", i)));
+///
+/// // Create a disjunction from the version facets iterator, no need to collect !
+/// let version_disjunction: FacetsDisjunction = version_facets.into_iter().collect();
+/// # }
+/// ```
 #[derive(Debug, Clone, Default)]
 pub struct FacetsDisjunction {
     facets: Vec<Facets>,
@@ -798,7 +865,12 @@ pub struct FacetsDisjunction {
 impl FacetsDisjunction {
     #[must_use]
     pub fn new() -> Self {
-        Self { facets: vec![] }
+        Self::default()
+    }
+
+    #[must_use]
+    pub fn new_with(facet: Facets) -> Self {
+        Self::default().or(facet)
     }
 
     /// Adds a facet to this disjunction by mutating the current instance.
@@ -810,8 +882,7 @@ impl FacetsDisjunction {
     ///
     /// ```rust
     /// # use rrhodium::{FacetsDisjunction, Facets};
-    /// let mut disjunction = FacetsDisjunction::new();
-    /// disjunction.push(Facets::Version("1.19.0".to_string()));
+    /// let mut disjunction = FacetsDisjunction::new_with(Facets::Version("1.19.0".to_string()));
     /// disjunction.push(Facets::Version("1.19.1".to_string()));
     /// ```
     ///
@@ -828,8 +899,7 @@ impl FacetsDisjunction {
     ///
     /// ```rust
     /// # use rrhodium::{FacetsDisjunction, Facets};
-    /// let disjunction = FacetsDisjunction::new()
-    ///     .or(Facets::Categories("technology".to_string()))
+    /// let disjunction = FacetsDisjunction::new_with(Facets::Categories("technology".to_string()))
     ///     .or(Facets::Categories("adventure".to_string()))
     ///     .or(Facets::Categories("utility".to_string()));
     /// ```
@@ -841,12 +911,47 @@ impl FacetsDisjunction {
         self.push(facet);
         self
     }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, Facets> {
+        self.facets.as_slice().iter()
+    }
 }
 
 impl Display for FacetsDisjunction {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let s = self.facets.iter().map(|f| f.to_string()).join("v");
         write!(f, "{s}")
+    }
+}
+
+impl<'a> IntoIterator for &'a FacetsDisjunction {
+    type Item = &'a Facets;
+    type IntoIter = std::slice::Iter<'a, Facets>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl IntoIterator for FacetsDisjunction {
+    type Item = Facets;
+    type IntoIter = std::vec::IntoIter<Facets>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.facets.into_iter()
+    }
+}
+
+impl std::convert::From<Vec<Facets>> for FacetsDisjunction {
+    fn from(value: Vec<Facets>) -> Self {
+        Self { facets: value }
+    }
+}
+
+impl std::iter::FromIterator<Facets> for FacetsDisjunction {
+    fn from_iter<T: IntoIterator<Item = Facets>>(iter: T) -> Self {
+        Self {
+            facets: iter.into_iter().collect(),
+        }
     }
 }
 
@@ -891,8 +996,7 @@ mod tests {
 
     #[test]
     pub fn search_builder_facets() {
-        let versions_facets = FacetsDisjunction::new()
-            .or(Facets::Version("1.21".to_string()))
+        let versions_facets = FacetsDisjunction::new_with(Facets::Version("1.21".to_string()))
             .or(Facets::Version("1.20".to_string()));
 
         let url = SearchBuilder::new()
@@ -909,12 +1013,10 @@ mod tests {
 
     #[test]
     pub fn search_builder_facets_disjunction() {
-        let mut versions_facets = FacetsDisjunction::new();
-        versions_facets.push(Facets::Version("1.21".to_string()));
+        let mut versions_facets = FacetsDisjunction::new_with(Facets::Version("1.21".to_string()));
         versions_facets.push(Facets::Version("1.20".to_string()));
 
-        let mut type_facets = FacetsDisjunction::new();
-        type_facets.push(Facets::ProjectType("modpack".to_string()));
+        let type_facets = FacetsDisjunction::new_with(Facets::ProjectType("modpack".to_string()));
 
         let url = SearchBuilder::new()
             .facets(vec![versions_facets, type_facets])
@@ -932,19 +1034,16 @@ mod tests {
 
     #[test]
     pub fn search_builder_facets_disjunction_builder() {
-        let mut type_facets = FacetsDisjunction::new();
-        type_facets.push(Facets::ProjectType("modpack".to_string()));
-
         let facets = FacetsConjunction::new()
             .and(
-                FacetsDisjunction::new()
-                    .or(Facets::Version("1.19".to_string()))
+                FacetsDisjunction::new_with(Facets::Version("1.19".to_string()))
                     .or(Facets::Version("1.22".to_string())),
             )
-            .and(FacetsDisjunction::new().or(Facets::ProjectType("modpack".to_string())))
+            .and(FacetsDisjunction::new_with(Facets::ProjectType(
+                "modpack".to_string(),
+            )))
             .and(
-                FacetsDisjunction::new()
-                    .or(Facets::Categories("technology".to_string()))
+                FacetsDisjunction::new_with(Facets::Categories("technology".to_string()))
                     .or(Facets::Categories("adventure".to_string())),
             );
 
@@ -1021,6 +1120,45 @@ mod tests {
 
         assert_eq!(
             "https://api.modrinth.com/v2/project/Jw3Wx1KR/version?game_versions=[\"1.18\",\"1.18.2\"]&loaders=[\"fabric\",\"quilt\"]",
+            url
+        );
+    }
+
+    #[test]
+    pub fn collect_conj() {
+        let conj: FacetsConjunction = ["Technology", "Magic", "Adventure"]
+            .iter()
+            .map(|c| FacetsDisjunction::new_with(Facets::Categories(c.to_string())))
+            .collect();
+
+        let url = SearchBuilder::new()
+            .facets(conj)
+            .search_type(SearchType::Search { query: "".into(), limit: None, offset: None })
+            .build_url();
+
+
+        assert_eq!(
+            "https://api.modrinth.com/v2/search?facets=[[\"categories:Technology\"],[\"categories:Magic\"],[\"categories:Adventure\"]]",
+            url
+        );
+    }
+
+
+    #[test]
+    pub fn fold_disj() {
+        let disj = ["Technology", "Magic", "Adventure"]
+            .iter()
+            .fold(FacetsDisjunction::new(), |acc,x| acc.or(Facets::Categories(x.to_string())));
+            
+
+        let url = SearchBuilder::new()
+            .facets(FacetsConjunction::new_with(disj))
+            .search_type(SearchType::Search { query: "".into(), limit: None, offset: None })
+            .build_url();
+
+
+        assert_eq!(
+            "https://api.modrinth.com/v2/search?facets=[[\"categories:Technology\",\"categories:Magic\",\"categories:Adventure\"]]",
             url
         );
     }
